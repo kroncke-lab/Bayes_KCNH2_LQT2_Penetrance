@@ -1,0 +1,286 @@
+---
+title: "Data Preparation to Estimate LQT2 Penetrance from *KCNH2* Variant Properties"
+author: "Brett Kroncke"
+date: "February 01, 2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: false
+      # collapsed: true
+    smooth_scroll: true
+    code_folding: hide
+    highlight: zenburn #textmate
+    theme: flatly
+    # number_sections: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r preamble,include=FALSE}
+# set the working directory
+setwd("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/penetrancePrediction/")
+source('func_dist_seq.R')
+
+library("DBI")
+library("RSQLite")
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(caret)
+library(plotrix)
+library(glmnet)
+library(meta)
+library(reshape2)
+library(psych)
+require(Hmisc)
+library(tableone)
+library(wCorr)
+library(rms)
+library(boot)
+library(leaps)
+library(car)
+library(reticulate)
+library(rootSolve)
+library(pROC)
+library(wCorr)
+library(MALDIquant)
+
+```
+
+# Introduction
+This document describes an estimate of LQT2 penetrance from *KCNH2* missense variants. We incorporate structure, function, and *in silico* predictive models to inform Bayesian penetrance priors.
+
+## Data Preparation
+Data are read in, cleaned, and predictive features are prepared for analysis in final dataframe, "d". Data are then saved to `RData` format. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r data prep, eval = F}
+# literature data file WITHOUT potential overlaps between literature and Paris, Japan, Italy
+con = dbConnect(SQLite(),
+                dbname="../VariantKCNH2-v4_w_paris_japan_and_italycohort.db")
+alltables = dbListTables(con)
+my.data <- dbReadTable(con, 'VariantKCNH2')
+my.data[my.data=='NA'] <- NA
+d<-my.data
+dbDisconnect(con)
+d <- unique(d)
+d <- d[d$nativeAA != d$mutAA,]
+d <- d[!is.na(d$var),]
+d$gnomAD <- as.integer(d$gnomAD)
+d$gnomAD[is.na(d$gnomAD)] <- 0
+d$total_carriers<-d$unaff+d$lqt2+d$sqts+d$gnomAD
+
+# Note missense variants
+missense <- c("S", "T", "V", "D", "P", "E", "G",  "Y", "R", "W", 
+              "F", "H", "N", "A", "K", "Q", "L", "I", "C", "M", 
+              "del", "LL", "dup", "MM", "Del", "Ins", "ins")
+
+nonsense <- c("X", "RX","PX", "WX", "TX", "CX", "GX", "VX", 
+              "QX", "AX", "EX", "KX", "IX", "fsX", "insGAG", 
+              "sp", "", "fs", "splice", "LX")
+
+d$mut_type <- "nonsense"
+d[d$mutAA %in% missense, "mut_type"] <- "missense"
+lit.nonoverlap.data <- d[,c("var", "resnum", "nativeAA", "lqt2", "total_carriers", "mut_type", "gnomAD", "gnomAD_seq")]
+lit.nonoverlap.data$unaff <- lit.nonoverlap.data$total_carriers - lit.nonoverlap.data$lqt2
+lit.nonoverlap.data[lit.nonoverlap.data$mutAA == lit.nonoverlap.data$nativeAA,"mut_type"] <- "synonymous"
+
+# Read in cohort data
+france.data <- read.csv("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/Network_KCNH2_variants/French_cohort/France_cohort.csv")
+italy.data <- read.csv("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/Network_KCNH2_variants/Italy_cohort/Italy_cohort.csv")
+japan.data <- read.csv("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/Network_KCNH2_variants/Japan_cohort/Japan_cohort-v2.csv")
+
+# Read in isoform A sequence
+iso_a<-read.csv("../kcnh2_isoform_a.csv")
+names(iso_a)[1]<-"wtAA"
+
+# Combine all individuals from the cohort by missense variants
+cohort.data <- as.data.frame(unique(c(as.character(italy.data$var), as.character(japan.data$var), as.character(france.data$var))))
+names(cohort.data) <- "var"
+lit.cohort.data <- as.data.frame(unique(c(as.character(d$var), as.character(cohort.data$var))))
+names(lit.cohort.data) <- "var" # lit.cohort.data has the greatest number of variants. 
+mut_type <- as.data.frame(c(as.character(d$mutAA), as.character(italy.data$mutAA), as.character(japan.data$mutAA), as.character(france.data$mutAA)))
+native <- as.data.frame(c(as.character(d$nativeAA), as.character(italy.data$nativeAA), as.character(japan.data$nativeAA), as.character(france.data$nativeAA)))
+resnum <- as.data.frame(c(as.character(d$resnum), as.character(italy.data$resnum), as.character(japan.data$resnum), as.character(france.data$resnum)))
+variants <- as.data.frame(c(as.character(d$var), as.character(italy.data$var), as.character(japan.data$var), as.character(france.data$var)))
+names(variants) <- "var"
+names(mut_type) <- "mutAA"
+names(native) <- "nativeAA"
+names(resnum) <- "resnum"
+mut_type$mut_type <- "nonsense"
+mut_type[mut_type$mutAA %in% missense, "mut_type"] <- "missense"
+mut_type[,c("var","nativeAA","resnum")] <- c(as.character(variants$var), as.character(native$nativeAA), as.character(resnum$resnum))
+mut_type$resnum <- as.numeric(mut_type$resnum)
+mut_type[mut_type$mutAA == mut_type$nativeAA & !is.na(mut_type$mutAA) & !is.na(mut_type$nativeAA), "mut_type"] <- "synonymous"
+mut_type <- unique(mut_type)
+
+# Combine all affected and unaffected individuals who carry the same variant
+for (variant in cohort.data$var){
+  lqt2_j <- 0 
+  lqt2_i <- 0 
+  lqt2_f <- 0 
+  unaff_j <- 0 
+  unaff_i <- 0 
+  unaff_f <- 0 
+  if (!is.na(match(variant,france.data$var))) {
+    lqt2_f<-france.data[france.data$var == variant,"lqt2_F"]
+    unaff_f<-france.data[france.data$var == variant,"total_carriers_F"] - france.data[france.data$var == variant,"lqt2_F"]
+  } 
+  if (!is.na(match(variant,italy.data$var))) {
+    lqt2_i<-italy.data[italy.data$var == variant,"lqt2_I"]
+    unaff_i<-italy.data[italy.data$var == variant,"total_carriers_I"] - italy.data[italy.data$var == variant,"lqt2_I"]
+  }
+  if (!is.na(match(variant,japan.data$var))) {
+    lqt2_j<-japan.data[japan.data$var == variant,"lqt2_J"]
+    unaff_j<-japan.data[japan.data$var == variant,"total_carriers_J"] - japan.data[japan.data$var == variant,"lqt2_J"]
+  }
+  lqt2<-lqt2_i + lqt2_j + lqt2_f
+  unaff<- unaff_i + unaff_j + unaff_f
+  cohort.data[cohort.data$var == variant,"lqt2"] <- lqt2
+  cohort.data[cohort.data$var == variant,"unaff"] <- unaff
+  cohort.data[cohort.data$var == variant,"total_carriers"] <- unaff + lqt2
+}
+
+# Combine individuals from cohort and literature in separate data.frame
+for (variant in lit.cohort.data$var){
+  lqt2_c <- 0 
+  lqt2_l <- 0 
+  unaff_c <- 0 
+  unaff_l <- 0 
+  if (!is.na(match(variant,d$var))) {
+    lqt2_l <- d[d$var == variant,"lqt2"]
+    unaff_l <- d[d$var == variant,"total_carriers"] - d[d$var == variant,"lqt2"]
+  } 
+  if (!is.na(match(variant,cohort.data$var))) {
+    lqt2_c <- cohort.data[cohort.data$var == variant,"lqt2"]
+    unaff_c <- cohort.data[cohort.data$var == variant,"unaff"]
+  }
+  lqt2<- lqt2_l + lqt2_c
+  unaff<- unaff_l + unaff_c
+  lit.cohort.data[lit.cohort.data$var == variant,"lqt2"] <- lqt2
+  lit.cohort.data[lit.cohort.data$var == variant,"unaff"] <- unaff
+  lit.cohort.data[lit.cohort.data$var == variant,"total_carriers"] <- unaff + lqt2
+  if (!is.na(match(variant,d$var))){
+  lit.cohort.data[lit.cohort.data$var == variant,c("gnomAD","gnomAD_seq")] <- d[d$var == variant,c("gnomAD","gnomAD_seq")]
+  } else {lit.cohort.data[lit.cohort.data$var == variant,c("gnomAD","gnomAD_seq")]<-c(NA,NA)}
+}
+
+
+# Merge cohort and lit.cohort with mut_type to assign all "missense" variants
+cohort.data <- unique(merge(cohort.data,mut_type,all = TRUE))
+lit.cohort.data <- unique(merge(lit.cohort.data,mut_type,all = TRUE))
+
+# Remove variants with 0 carriers
+cohort.data <- cohort.data[cohort.data$total_carriers>0 & !is.na(cohort.data$total_carriers),]
+lit.cohort.data <- lit.cohort.data[lit.cohort.data$total_carriers>0 & !is.na(lit.cohort.data$mut_type),]
+
+# Clean datasets
+cohort.data[cohort.data$var == "D287-305del", "nativeAA"] <- "D"
+lit.cohort.data[lit.cohort.data$var == "D287-305del", "nativeAA"] <- "D"
+lit.nonoverlap.data[lit.nonoverlap.data$var == "593X", "nativeAA"] <- "I"
+lit.nonoverlap.data[lit.nonoverlap.data$var == "593X", "var"] <- "I593X"
+mut_type[mut_type$var == "593X", "nativeAA"] <- "I"
+mut_type[mut_type$var == "593X", "var"] <- "I593X"
+mut_type[mut_type$var == "D287-305del", "nativeAA"] <- "D"
+mut_type[mut_type$var == "D896X", "resnum"] <- 896
+
+# Adjust isoform identity
+cohort.data$isoform<-"C"
+lit.cohort.data$isoform<-"C"
+lit.nonoverlap.data$isoform<-"C"
+mut_type$isoform<-"C"
+iso_b<-NA
+res_b<-seq(1,36,1)
+res_b_aa<-c("M", "A", "A", "P", "A", "G", "K", "A", "S", "R", "T", "G", "A", 
+            "L", "R", "P", "R", "A", "Q", "K", "G", "R", "V", "R", "R", "A", 
+            "V", "R", "I", "S", "S", "L", "V", "A", "Q", "E")
+iso_b$resnum<-res_b
+iso_b$wtAA<-res_b_aa
+iso_b<-data.frame(iso_b)
+iso_b<-iso_b[,c("resnum","wtAA")]
+
+for (row in iso_a$resnum){
+  lit.cohort.data[!is.na(lit.cohort.data$nativeAA) & !is.na(lit.cohort.data$resnum) & lit.cohort.data$resnum == row & lit.cohort.data$nativeAA == as.character(iso_a[row,"wtAA"]), "isoform"]<-"A"
+  cohort.data[!is.na(cohort.data$nativeAA) & !is.na(cohort.data$resnum) & cohort.data$resnum == row & cohort.data$nativeAA == as.character(iso_a[row,"wtAA"]), "isoform"]<-"A"
+  lit.nonoverlap.data[!is.na(lit.nonoverlap.data$nativeAA) & !is.na(lit.nonoverlap.data$resnum) & lit.nonoverlap.data$resnum == row & lit.nonoverlap.data$nativeAA == as.character(iso_a[row,"wtAA"]), "isoform"]<-"A"
+  mut_type[!is.na(mut_type$nativeAA) & !is.na(mut_type$resnum) & mut_type$resnum == row & mut_type$nativeAA == as.character(iso_a[row,"wtAA"]), "isoform"]<-"A"
+}
+
+for (row in iso_b$resnum){
+  lit.cohort.data[!is.na(lit.cohort.data$resnum) & lit.cohort.data$resnum == row & lit.cohort.data$nativeAA == as.character(iso_b[row,"wtAA"]), "isoform"]<-"B"
+  cohort.data[!is.na(cohort.data$resnum) & cohort.data$resnum == row & cohort.data$nativeAA == as.character(iso_b[row,"wtAA"]), "isoform"]<-"B"
+    lit.nonoverlap.data[!is.na(lit.nonoverlap.data$resnum) & lit.nonoverlap.data$resnum == row & lit.nonoverlap.data$nativeAA == as.character(iso_b[row,"wtAA"]), "isoform"]<-"B"
+  mut_type[!is.na(mut_type$resnum) & mut_type$resnum == row & mut_type$nativeAA == as.character(iso_b[row,"wtAA"]), "isoform"]<-"B"
+}
+
+cohort.data <- cohort.data[,c("var", "resnum", "lqt2", "unaff", "total_carriers","isoform", "mut_type")]
+lit.cohort.data <- lit.cohort.data[,c("var", "resnum", "lqt2", "unaff", "total_carriers","isoform", "mut_type", "gnomAD", "gnomAD_seq")]
+lit.nonoverlap.data <- lit.nonoverlap.data[,c("var", "resnum", "lqt2", "unaff", "total_carriers","isoform", "mut_type", "gnomAD", "gnomAD_seq")]
+lit.nonoverlap.data$resnum <- as.numeric(lit.nonoverlap.data$resnum)
+
+# Load in silico covariates and assign isoform A and B. 
+AAs<-c("A","G","I","L","V","M","F","W","P","C","S","T","Y","N","Q","H","K","R","D","E","X")
+cb<-read.table("C:/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/PredictiveFeatureServers/cardiacboost_arm_all_possible_mutations-adj.txt", sep = "\t", header = TRUE)
+cb<-cb[cb$gene=="KCNH2",]
+cb$var<-as.character(paste(cb$var))
+cb$isoform<-"A"
+cb$mut_type<-"missense"
+cb<-cb[,c("pathogenicity","var","mut_type","isoform")] 
+# thought about including: "HGVSp","HGVSc","pos","ref","alt",
+names(cb)[1]<-"cardiacboost"
+pssm<-read.table("C:/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/PredictiveFeatureServers/DY48SUFA014-PSSM_Scoremat.asn_matrix.txt", sep = "\t", header = TRUE)
+pssm_melt<-melt(data = pssm, id.vars = c("resnum", "nativeAA"), measure.vars = AAs, variable.name = "mutAA", value.name = "blast_pssm")
+pph2<-read.csv("pph2-adj.csv", strip.white = TRUE)
+pph2 <- pph2[,c("nativeAA", "resnum", "mutAA", "pph2_prob")]
+prov<-read.csv("provean_20190522.csv", strip.white = TRUE)
+prov <- prov[,c("var","provean_score")]
+pam_aa <- d[,c("var", "resnum", "nativeAA", "pamscore","aasimilaritymat", "mut_type")]
+revel <- read.csv("../PredictiveFeatureServers/revel_score_adj.csv", header = TRUE)
+names(revel) <- c("var","revel_score")
+
+# merge in silico covariates and isoform into one data.frame
+in.silico <- merge(pph2, pssm_melt, all = TRUE)
+in.silico <- unique(in.silico)
+in.silico$var <- paste(in.silico$nativeAA, in.silico$resnum, in.silico$mutAA, sep = "")
+in.silico <- merge(cb, in.silico, all = TRUE)
+in.silico <- unique(in.silico)
+in.silico <- merge(in.silico, prov, all = TRUE)
+in.silico <- unique(in.silico)
+in.silico <- merge(in.silico, mut_type, all = TRUE)
+in.silico <- unique(in.silico)
+in.silico <- merge(in.silico, pam_aa, all = TRUE)
+in.silico <- unique(in.silico)
+in.silico <- merge(in.silico, revel, all = TRUE)
+in.silico <- unique(in.silico)
+in.silico<-in.silico[,c("var", "resnum", "pph2_prob", 
+                        "blast_pssm", "provean_score", "pamscore", "aasimilaritymat", "revel_score", "cardiacboost", "mut_type","isoform")]
+
+# consolidate all function-based predictive covariates
+h2.function<-d[,c("var", "hm_ssPeak", "hm_tailPeak", "hm_vhalfact", "hm_vhalfinact", 
+                  "hm_recovfrominact", "hm_taudeact_fast", "ht_ssPeak", "ht_tailPeak", 
+                  "ht_vhalfact", "ht_vhalfinact", "ht_recovfrominact", "ht_taudeact_fast")]
+
+h2.covariates <- merge(in.silico, h2.function, all=TRUE)
+h2.covariates$pamscore <- as.numeric(h2.covariates$pamscore)
+h2.covariates$aasimilaritymat <- as.numeric(h2.covariates$aasimilaritymat)
+h2.covariates$hm_ssPeak <- as.numeric(h2.covariates$hm_ssPeak)
+h2.covariates$hm_tailPeak <- as.numeric(h2.covariates$hm_tailPeak)
+h2.covariates$hm_vhalfact <- as.numeric(h2.covariates$hm_vhalfact)
+h2.covariates$hm_vhalfinact <- as.numeric(h2.covariates$hm_vhalfinact)
+h2.covariates$hm_recovfrominact <- as.numeric(h2.covariates$hm_recovfrominact)
+h2.covariates$hm_taudeact_fast <- as.numeric(h2.covariates$hm_taudeact_fast)
+h2.covariates$ht_ssPeak <- as.numeric(h2.covariates$ht_ssPeak)
+h2.covariates$ht_tailPeak <- as.numeric(h2.covariates$ht_tailPeak)
+h2.covariates$ht_vhalfact <- as.numeric(h2.covariates$ht_vhalfact)
+h2.covariates$ht_vhalfinact <- as.numeric(h2.covariates$ht_vhalfinact)
+h2.covariates$ht_recovfrominact <- as.numeric(h2.covariates$ht_recovfrominact)
+h2.covariates$ht_taudeact_fast <- as.numeric(h2.covariates$ht_taudeact_fast)
+
+# Save all relevant data
+save(cohort.data,lit.cohort.data,lit.nonoverlap.data,h2.covariates,mut_type,file="prepared_data.RData")
+
+```
