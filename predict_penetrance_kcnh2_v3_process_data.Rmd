@@ -19,7 +19,7 @@ editor_options:
 
 ```{r preamble,include=FALSE}
 # set the working directory
-setwd("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/penetrancePrediction/")
+setwd("/Users/KRONCKE/Box Sync/Kroncke_Lab/GitHub/Bayes_KCNH2_LQT2_Penetrance/")
 source('func_dist_seq.R')
 
 library("DBI")
@@ -61,7 +61,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r data prep, eval = F}
 # literature data file WITHOUT potential overlaps between literature and Paris, Japan, Italy
 con = dbConnect(SQLite(),
-                dbname="../VariantKCNH2-v4_w_paris_japan_and_italycohort.db")
+                dbname="heterozygote_data/VariantKCNH2-v4_w_paris_japan_and_italycohort.db")
 alltables = dbListTables(con)
 my.data <- dbReadTable(con, 'VariantKCNH2')
 my.data[my.data=='NA'] <- NA
@@ -90,12 +90,12 @@ lit.nonoverlap.data$unaff <- lit.nonoverlap.data$total_carriers - lit.nonoverlap
 lit.nonoverlap.data[lit.nonoverlap.data$mutAA == lit.nonoverlap.data$nativeAA,"mut_type"] <- "synonymous"
 
 # Read in cohort data
-france.data <- read.csv("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/Network_KCNH2_variants/French_cohort/France_cohort.csv")
-italy.data <- read.csv("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/Network_KCNH2_variants/Italy_cohort/Italy_cohort.csv")
-japan.data <- read.csv("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/Network_KCNH2_variants/Japan_cohort/Japan_cohort-v2.csv")
+france.data <- read.csv("heterozygote_data/France_cohort.csv")
+italy.data <- read.csv("heterozygote_data/Italy_cohort.csv")
+japan.data <- read.csv("heterozygote_data/Japan_cohort-v2.csv")
 
 # Read in isoform A sequence
-iso_a<-read.csv("../kcnh2_isoform_a.csv")
+iso_a<-read.csv("kcnh2_isoform_a.csv")
 names(iso_a)[1]<-"wtAA"
 
 # Combine all individuals from the cohort by missense variants
@@ -224,7 +224,7 @@ lit.nonoverlap.data$resnum <- as.numeric(lit.nonoverlap.data$resnum)
 
 # Load in silico covariates and assign isoform A and B. 
 AAs<-c("A","G","I","L","V","M","F","W","P","C","S","T","Y","N","Q","H","K","R","D","E","X")
-cb<-read.table("C:/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/PredictiveFeatureServers/cardiacboost_arm_all_possible_mutations-adj.txt", sep = "\t", header = TRUE)
+cb<-read.table("covariates/cardiacboost_arm_all_possible_mutations-adj.csv", sep = "\t", header = TRUE)
 cb<-cb[cb$gene=="KCNH2",]
 cb$var<-as.character(paste(cb$var))
 cb$isoform<-"A"
@@ -232,14 +232,14 @@ cb$mut_type<-"missense"
 cb<-cb[,c("pathogenicity","var","mut_type","isoform")] 
 # thought about including: "HGVSp","HGVSc","pos","ref","alt",
 names(cb)[1]<-"cardiacboost"
-pssm<-read.table("C:/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/PredictiveFeatureServers/DY48SUFA014-PSSM_Scoremat.asn_matrix.txt", sep = "\t", header = TRUE)
+pssm<-read.table("covariates/DY48SUFA014-PSSM_Scoremat.asn_matrix.txt", sep = "\t", header = TRUE)
 pssm_melt<-melt(data = pssm, id.vars = c("resnum", "nativeAA"), measure.vars = AAs, variable.name = "mutAA", value.name = "blast_pssm")
-pph2<-read.csv("pph2-adj.csv", strip.white = TRUE)
+pph2<-read.csv("covariates/pph2-adj.csv", strip.white = TRUE)
 pph2 <- pph2[,c("nativeAA", "resnum", "mutAA", "pph2_prob")]
-prov<-read.csv("provean_20190522.csv", strip.white = TRUE)
+prov<-read.csv("covariates/provean_20190522.csv", strip.white = TRUE)
 prov <- prov[,c("var","provean_score")]
 pam_aa <- d[,c("var", "resnum", "nativeAA", "pamscore","aasimilaritymat", "mut_type")]
-revel <- read.csv("../PredictiveFeatureServers/revel_score_adj.csv", header = TRUE)
+revel <- read.csv("covariates/revel_score_adj.csv", header = TRUE)
 names(revel) <- c("var","revel_score")
 
 # merge in silico covariates and isoform into one data.frame
