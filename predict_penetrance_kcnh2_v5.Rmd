@@ -50,17 +50,12 @@ library(fpp2)           # working with time series data
 library(zoo)            # working with time series data
 library(latex2exp)
 
-setwd("/Users/KRONCKE/Box Sync/Kroncke_Lab/kcnh2/VariantDatabase/penetrancePrediction/")
+setwd("/Users/KRONCKE/Box Sync/Kroncke_Lab/GitHub/Bayes_KCNH2_LQT2_Penetrance/")
 source('func_dist_seq.R')
 load("prepared_data.RData")
 
 # Include distances between residue centroids from the structure of KV11.1 (KCNH2 protein product) PDB-ID: 5VA1
 h2dist<-read.csv(file = "5va1.dists.txt", header = FALSE)
-
-# gnomad as controls and unaffected as affected.
-lit.nonoverlap.data$total_carriers<-lit.nonoverlap.data$total_carriers - lit.nonoverlap.data$lqt2
-lit.nonoverlap.data$unaff<-lit.nonoverlap.data$total_carriers - lit.nonoverlap.data$gnomAD
-lit.nonoverlap.data$lqt2<-lit.nonoverlap.data$unaff
 
 ```
 
@@ -157,8 +152,11 @@ h2.covariates[, "lqt2_dist_weight"]<-NA
 mut_type <- mut_type[mut_type$mut_type == "missense" & mut_type$isoform == "A",]
 for(rec in 1:nrow(mut_type)){
   if (!is.na(mut_type[rec, "resnum"])) {
+    l<-length(h2.covariates[h2.covariates$var == mut_type[rec, "var"],"var"])
+    for (m in 1:l){
     h2.covariates[h2.covariates$var == mut_type[rec, "var"], 
-                  c("lqt2_dist", "lqt2_dist_weight", "resnum")] <- c(funcdist(mut_type[rec, "resnum"], mut_type[rec, "var"], d, h2dist, "penetrance_lqt2", "sigmoid", 7), mut_type[rec, "resnum"])
+                  c("lqt2_dist", "lqt2_dist_weight", "resnum")][m,] <- c(funcdist(mut_type[rec, "resnum"], mut_type[rec, "var"], d, h2dist, "penetrance_lqt2", "sigmoid", 7), mut_type[rec, "resnum"])
+    }
   }
 }
 
@@ -171,7 +169,7 @@ m<- h2.covariates %>%
   mutate(p_mean_smooth = rollmean(pmean, k=20, fill = NA))
 
 fit <- loess(h2.covariates[,"lqt2_dist"]~as.numeric(h2.covariates[,"resnum"]), span = 0.15)
-plot(h2.covariates$resnum, h2.covariates$lqt2_dist, xlab ="Residue", ylab = "LQT2 Penetrance Density")
+plot(h2.covariates$resnum, h2.covariates$lqt2_dist, xlab ="Residue", ylab = "LQT2 Penetrance Density", xlim=c(0,1160))
 xrange <- seq(min(fit$x), max(fit$x), length.out = 100)
 ps <- predict(fit, xrange, se=T)
 lines(xrange, ps$fit*1, lwd=5)
@@ -359,6 +357,7 @@ save(d, file = "lit_all_data_checkpoint.RData")
 ## Literature Variants Where N = 1 Variants are removed
 
 ```{r}
+
 # Literature dataset where potentially overlapping carriers/heterozygotes are removed
 d <- lit.nonoverlap.data[lit.nonoverlap.data$mut_type == "missense",]
 
@@ -734,6 +733,12 @@ save(d,file = "lit_plus_cohort_checkpoint.RData")
 ```{r}
 cohort.data$weight = 1-1/(0.01+cohort.data$total_carriers)
 cohort.data$penetrance_lqt2 <- cohort.data$lqt2/cohort.data$total_carriers
+
+for (variant in cohort.data$var) {
+  if (!is.na(match(variant, d$var))) {
+     cohort.data[cohort.data$var == variant, c("lqt2_penetranceEstimate_EM","alpha", "beta", "lqt2_lit", "unaff_lit", "total_carriers_lit")] <- d[d$var == variant, c("p_mean_w", "alpha", "beta", "lqt2", "unaff", "total_carriers")]
+  }
+}
 
 m<- cohort.data %>% 
   select(resnum, pmean = penetrance_lqt2) %>% 
