@@ -1,7 +1,7 @@
 ---
 title: "Predict Variant Penetrance Using Structure, Function, and *In Silico* Features (*KCNH2* and LQT2)"
-author: "Brett Kroncke and Yi Zuo"
-date: "February 01, 2020"
+author: "Brett Kroncke"
+date: "October 01, 2020"
 output: 
   html_document:
     toc: true
@@ -49,6 +49,8 @@ library(lubridate)      # easily work with dates and times
 library(fpp2)           # working with time series data
 library(zoo)            # working with time series data
 library(latex2exp)
+library(forestplot)
+library(ggplot2)
 
 setwd("/Users/KRONCKE/Box Sync/Kroncke_Lab/GitHub/Bayes_KCNH2_LQT2_Penetrance/")
 source('func_dist_seq.R')
@@ -60,9 +62,9 @@ h2dist<-read.csv(file = "5va1.dists.txt", header = FALSE)
 ```
 
 # Introduction
-This document describes an estimate of the positive predictive value (PPV) of variant discovery for all variants in the gene *KCNH2* on long QT syndrome type 2 (LQT2). We use observed and estimated LQT2 penetrance for all known KCNH2 variants as a way to assess the per variant PPV for variant discovery. Our objective is to develope a prior estimate of the per variant PPV on LQT2 which incorporates structure, function, and *in silico* predictors. We use these *in silico* and *in vitro* data to generate a Bayesian prior estimate of the per variant PPV since these data can be generated in a lab setting, unlike heterozygotes/carriers of *KCNH2* variants which may or may not exist. The final posterior estimate combines this derived prior and clinically phenotyped heterozygotes/carriers.
+This document describes an estimate of the positive predictive value (PPV) of variant discovery for all variants in the gene *KCNH2* on long QT syndrome type 2 (LQT2). Additional details on the methods used are published Kroncke et al. 2020 PLOS Genetics and at the following website: (https://oates.app.vumc.org/vancart/SCN5A/SCN5A-report.html). We use observed and estimated LQT2 penetrance for all known KCNH2 variants as a way to assess the per variant PPV for variant discovery. Our objective is to develope a prior estimate of the per variant PPV on LQT2 which incorporates structure, function, and *in silico* predictors. We use these *in silico* and *in vitro* data to generate a Bayesian prior estimate of the per variant PPV since these data can be generated in a lab setting, unlike heterozygotes/carriers of *KCNH2* variants which may or may not exist. The final posterior estimate combines this derived prior and clinically phenotyped heterozygotes/carriers.
 
-# Calculate LQT2 Penetrance and LQT2 Penetrance Density using Various Subsets of the Literature and Cohort Data
+# Part 1: Calculate LQT2 Penetrance and LQT2 Penetrance Density using Various Subsets of the Literature and Cohort Data
 
 ## All Literature Variants
 
@@ -183,7 +185,7 @@ Evaluate weighted Spearman correlations coefficients between observed LQT2 penet
 
 ```{r}
 # Merge "d" with full variant list and set carrier counts to 0. 
-# This is done for convenience so  we can estimate LQT2 penetrance for all variants including 
+# This is done for convenience so we can estimate LQT2 penetrance for all variants including 
 # those witheld during model construction. This will make validation easier.
 d <- merge(d, h2.covariates, all = TRUE)
 d <- unique(d) 
@@ -236,6 +238,7 @@ calcAllPvals=function(yList,xList,nPerms,weightName,new.mat2){
   return(resultTable)
 }
 
+
 yList=c('penetrance_lqt2')
 xList=c('hm_ssPeak','hm_tailPeak','hm_vhalfact','hm_vhalfinact','hm_recovfrominact', 'hm_taudeact_fast', 
         'ht_ssPeak','ht_tailPeak','ht_vhalfact','ht_vhalfinact','ht_recovfrominact', 'ht_taudeact_fast',
@@ -246,6 +249,7 @@ resultTable<-calcAllPvals(yList, xList, 1000, 'weight', tmp)
 
 tmp<-d[!is.na(d$ht_tailPeak) & !is.na(d$penetrance_lqt2) & !is.na(d$revel_score),]
 resultTable<-calcAllPvals(yList, xList, 1000, 'weight', tmp)
+
 ```
 
 ### Scale all covariates
@@ -338,8 +342,8 @@ for (variant in tmp$var){ d[d$var == variant, c("prior_mean_w", "p_mean_w")] <- 
 prior_mean <- d$p_mean_w
 variance <- prior_mean*(1-prior_mean)
 variance <- variance / 11
-ind_a <- seq(1, length(variance),1)
-ind_b <- seq(length(variance)+1, length(variance)*2,1)
+ind_a <- seq(1, length(variance), 1)
+ind_b <- seq(length(variance)+1, length(variance)*2, 1)
 alpha <- solab(prior_mean,variance)[ind_a]
 beta <- solab(prior_mean,variance)[ind_b]
 
@@ -525,7 +529,7 @@ save(d,file = "lit_no_n_is_one_checkpoint.RData")
 
 ```
 
-## Literature and Cohort Combined
+## Literature and Cohort Combined (for final predictions)
 
 ```{r}
 
@@ -546,7 +550,6 @@ d<-a
 d$weight = 1-1/(0.01+d$total_carriers)
 d$penetrance_lqt2 <- d$lqt2/d$total_carriers
 d[d$total_carriers < 1,"weight"] <- 0.000 # This is changed to "< 2" here to evaluate ROC-AUC of n=1 variants from the literature
-
 
 
 ```
@@ -587,7 +590,7 @@ d$lqt2_penetranceBayesian<-d$lqt2_penetranceBayesian_initial
 ```
 
 ### Calculate penetrance densities and annotate function and structural location
-With the updated empirical priors applied to carrier counts, calculate "penetrance density" as described in previous publication.
+With the updated empirical priors applied to carrier counts, calculate "penetrance density" as described in previous publication. !!! NOTE: since these data are truly the "best estimates" we include all variants in the calculation such that unique scores are by residue not by variant.
 
 ```{r}
 
@@ -632,7 +635,7 @@ d[!is.na(d$ht_tailPeak) & d$ht_tailPeak>=1.25,"Function"]<-"GOF"
 Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 penetrance) 
 
 ```{r, include=FALSE}
-# Assign p_mean_w to empirical penetrance. I need to add the reassignment to ensure
+# Assign p_mean_w to empirical penetrance. The reassignment to ensures
 # p_mean_w does not contain "NA"s.
 d[is.na(d$lqt2_penetranceBayesian),"lqt2_penetranceBayesian"] <- alpha0/(alpha0+beta0)
 d$p_mean_w <- d$lqt2_penetranceBayesian
@@ -728,15 +731,18 @@ save(d,file = "lit_plus_cohort_checkpoint.RData")
 
 ```
 
-##  LQT2 penetrance in Cohort Data
+##  LQT2 penetrance in Cohort Data for validation
 
 ```{r}
+load("prepared_data.RData")
+load("lit_all_data_checkpoint.RData")
+
 cohort.data$weight = 1-1/(0.01+cohort.data$total_carriers)
 cohort.data$penetrance_lqt2 <- cohort.data$lqt2/cohort.data$total_carriers
 
 for (variant in cohort.data$var) {
   if (!is.na(match(variant, d$var))) {
-     cohort.data[cohort.data$var == variant, c("lqt2_penetranceEstimate_EM","alpha", "beta", "lqt2_lit", "unaff_lit", "total_carriers_lit")] <- d[d$var == variant, c("p_mean_w", "alpha", "beta", "lqt2", "unaff", "total_carriers")]
+     cohort.data[cohort.data$var == variant, c("p_mean_w","alpha", "beta", "lqt2_lit", "unaff_lit", "total_carriers_lit", "lqt2_dist")] <- d[match(variant, d$var), c("p_mean_w", "alpha", "beta", "lqt2", "unaff", "total_carriers", "lqt2_dist")]
   }
 }
 
@@ -756,16 +762,17 @@ lines(xrange, (ps$fit-1.96*ps$se.fit)*1, lty=2, lwd=4)
 cohort.data <- merge(cohort.data, h2.covariates, all = TRUE)
 cohort.data <- unique(cohort.data) 
 
+
 # Save cohort data
 save(cohort.data, file = "cohort_checkpoint.RData")
 
 ```
 
-# Part 1 Coverage plots
+# Part 2: Coverage plots
 ## Bootstrap and get the coverage rate 
-(1) Use the observed penetrance from some variant as the TRUE penetrance for that variant, generate n binomial observations
+(1) Use the observed penetrance from as the TRUE penetrance, generate n binomial observations
 
-(2) Use the final EM algorithm posterior as the prior for Beta-Binomial, incorporate data from previous step, generate the posterior distribution, get 95% credible interval.
+(2) Use the final EM algorithm posterior as the prior for Beta-Binomial, incorporate data from step (1), generate the posterior distribution, and get 95% credible interval.
 
 (3) Check whether the interval cover the true penetrance from Step 1.
 
@@ -780,26 +787,23 @@ BootsCoverage <- function(var,n=100,N=1000,true){
   # var: variant name
   # n: number of subjects in the new data
   # N: number of Bootstrap
-  
-  if(true=="empirical") true="lqt2_penetranceBayesian_initial"
-  if(true=="observed") true="penetrance_lqt2"
-  
+
   # extract the "true" penetrance
   true.p <- d[d$var==var,true]
   
   # generate binomial data 
   event <- rbinom(N,n,true.p)
-  
+
   # get the posterior credible interval
   alpha <- d$alpha[which(d$var==var)] 
   beta <- d$beta[which(d$var==var)] 
-  
+
   new.alpha <- alpha + event
   new.beta <- beta + n - event
-  
+
   lb <- qbeta(0.025,new.alpha,new.beta)
   ub <- qbeta(0.975,new.alpha,new.beta)
-  
+
   # change lb to floor of nearest 0.1
   lb <- floor(lb*20)/20
   ub <- ceiling(ub*20)/20
@@ -811,11 +815,20 @@ BootsCoverage <- function(var,n=100,N=1000,true){
 ```
 
 ## Plot coverage
-### Empirical penetrance as the true penetrance
+### Observed penetrance as the "true" penetrance
 
-The coverage plot where the empirical penetrance is the true penetrance and one hundred new observations are added is shown below. 
+The coverage plot where observed penetrance is the "true" penetrance and one hundred new observations are added is shown below. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# load data, literature + gnomAD + cohort
+load("lit_plus_cohort_checkpoint.RData")
+
+# solve for alpha and beta in Beta distribution
+solab <- function(mean, variance){
+  alpha <- (mean^2 * (1-mean) - variance * mean)/variance
+  beta <- alpha * (1 / mean - 1)
+  return(c(alpha,beta))
+}
 
 # when tuning parameter is nu
 nu = 11
@@ -833,35 +846,124 @@ d$p_mean_w <- new_mean
 d$alpha <- alpha
 d$beta <- beta
 
+d<-d[d$total_carriers>0,]
+d$var<-factor(d$var)
+
 ########## when n = 100 ##########
 
 
-results <- sapply(d$var,function(x) BootsCoverage(x,n=100,true="observed") )
+results <- sapply(d$var,function(x) BootsCoverage(x, n=100, true="penetrance_lqt2") )
 
 carriers.size <- ifelse(d$total_carriers <= 10,1,ifelse(d$total_carriers <= 100,2,ifelse(d$total_carriers <= 1000,3,ifelse(d$total_carriers <= 10^4,4,5) )))
 
-new.data <- data.frame(Penetrance=d$penetrance_lqt2,Coverage=results,Number=log10(d$total_carriers))
+new.data <- data.frame(Penetrance=d$penetrance_lqt2, Coverage=results, Number=log10(d$total_carriers))
 
 ggplot(data=new.data,aes(x=Penetrance,y=Coverage))+geom_point(aes(size=Number,color=Number),shape=20)+geom_hline(yintercept = 0.95,color="red")+scale_x_continuous(limits=c(0,1))+scale_y_continuous(limits=c(0,1))+labs(x=" True penetrance under simulation", y="Coverage rate", size=TeX("$\\log_{10}$(Total number of carriers)"),color=TeX("$\\log_{10}$(Total number of carriers)"))+
   theme(legend.position = "bottom",legend.box = 'vertical',legend.justification = 'left',legend.box.just = 'left',legend.title = element_text(size=8))+scale_colour_gradient(low = "dodgerblue", high = "black")
 ```
 
-# Evaluation: Pearson R^2 and Spearman Rho Against Empirical Posterior from Cohort
+# Part 3: Variance explained
+## Pearson R^2 and Spearman Rho Against EM Posterior from Cohort
 
 ```{r}
+# load data, literature + gnomAD + cohort
+load("lit_all_data_checkpoint.RData")
+load("cohort_checkpoint.RData")
+
+calcPval=function(xName,yName,weightName,nPerms,new.mat2){
+  # Pulls out variables
+
+  x=new.mat2[,xName] 
+  y=new.mat2[,yName] 
+  w=new.mat2[,weightName]
+  x2=x[!is.na(x)]
+  y2=y[!is.na(x)]
+  w2=w[!is.na(x)]
+
+  # Calculate the real correlation
+  realCorr=weightedCorr(x2,y2,method='spearman',weights=w2)
+  # Do permutations, calculate fake correlations
+  permutedCorrList=c()
+  for(permNum in 1:nPerms){
+    permutedX=sample(x2,length(x2),replace=FALSE)
+    wCorrSim=weightedCorr(permutedX,y2,method='spearman',weights=w2)
+    permutedCorrList=c(permutedCorrList,wCorrSim)
+  }
+  permutedCorrList2=abs(permutedCorrList)
+  realCorr2=abs(realCorr)
+  
+  # Calculate pvalue
+  summ=sum(realCorr2<permutedCorrList2)
+  pValue=summ/nPerms
+  return(list(realCorr,pValue,length(x2)))
+}
+
+calcAllPvals=function(yList,xList,nPerms,weightName,new.mat2){
+  i=0
+  resultTable=data.frame()
+  for(yName in yList){
+    for(xName in xList){
+      i=i+1
+      result=calcPval(xName,yName,weightName,nPerms,new.mat2)
+      resultTable[i,'x']=xName
+      resultTable[i,'y']=yName
+      resultTable[i,'nPerms']=nPerms
+      resultTable[i,'weightedCorr']=result[[1]]
+      resultTable[i,'pValue']=result[[2]]
+      resultTable[i,'n']=result[[3]]
+      #print(resultTable[i,'pValue'])
+    }
+  }
+  print(resultTable)
+  return(resultTable)
+}
+
 # Select covariates from isoform "A" in cohort dataset
-cohort.data <- cohort.data[!is.na(cohort.data$mut_type) & !is.na(cohort.data$total_carriers) & cohort.data$isoform == "A",]
+cohort.data <- cohort.data[!is.na(cohort.data$total_carriers) & cohort.data$isoform == "A" & cohort.data$mut_type == "missense",]
 
 tmp<-cohort.data[!is.na(cohort.data$provean_score) & !is.na(cohort.data$revel_score) & !is.na(cohort.data$pamscore),]
 yList=c('penetrance_lqt2')
 xList=c('hm_ssPeak','hm_tailPeak','hm_vhalfact','hm_vhalfinact','hm_recovfrominact', 'hm_taudeact_fast', 
         'ht_ssPeak','ht_tailPeak','ht_vhalfact','ht_vhalfinact','ht_recovfrominact', 'ht_taudeact_fast',
         'pph2_prob', 'provean_score', "blast_pssm",
-        'pamscore', 'aasimilaritymat', "lqt2_dist", 'lqt2_penetranceEstimate_EM', "revel_score")
+        'pamscore', 'aasimilaritymat', "lqt2_dist", "revel_score", 'p_mean_w')
 resultTable<-calcAllPvals(yList, xList, 1000, 'weight', tmp)
 
+rm(tmp)
+rm(t)
+i=0
+tmp<-data.frame()
+for (x in xList){
+  i=i+2
+  tmp[i-1,"Feature"]<-x
+  t<-d[!is.na(d[,x]) & d$total_carriers>0,]
+  t<-t[!is.na(t[,"var"]),]
+  tmp[i,"Feature"]<-paste(x,"_cohort")
+  t<-d[!is.na(d[,x]) & d$total_carriers>0,]
+  t<-t[!is.na(t[,"var"]),]
+  foo <- boot(t, function(data,indices)
+  weightedCorr(t[indices,x],t$penetrance_lqt2[indices], method="spearman", weights = t$weight[indices]), R=1000)
+  tmp[i-1,"Spearman"]<-foo$t0
+  tmp[i-1,"Spearman_low"]<-quantile(foo$t,c(0.025,0.975), na.rm = T)[1][[1]]
+  tmp[i-1,"Spearman_high"]<-quantile(foo$t,c(0.025,0.975), na.rm = T)[2][[1]]
+  tmp[i-1,"n"]<-length(t[,x])
+  t<-cohort.data[!is.na(cohort.data[,x]) & cohort.data$total_carriers>0,]
+  t<-t[!is.na(t[,"var"]),]
+  foo <- boot(t, function(data,indices)
+  weightedCorr(t[indices,x],t$penetrance_lqt2[indices], method="spearman", weights = t$weight[indices]), R=1000)
+  tmp[i,"Spearman"]<-foo$t0
+  tmp[i,"Spearman_low"]<-quantile(foo$t,c(0.025,0.975), na.rm = T)[1][[1]]
+  tmp[i,"Spearman_high"]<-quantile(foo$t,c(0.025,0.975), na.rm = T)[2][[1]]
+  tmp[i,"n"]<-length(t[,x])
+}
+
+forestplot(tmp$Feature,tmp$Spearman,tmp$Spearman_low,tmp$Spearman_high)
+
+# reset "tmp" variable
+tmp<-cohort.data[!is.na(cohort.data$provean_score) & !is.na(cohort.data$revel_score) & !is.na(cohort.data$pamscore),]
+# Weighted R2 between observed LQT2 penetrance and post-test probability
 foo <- boot(tmp, function(data,indices)
-  weightedCorr(tmp$lqt2_penetranceEstimate_EM[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
+  weightedCorr(tmp$p_mean_w[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
 print("EM estimated LQT2 penetrance versus observed cohort LQT2 penetrance")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
@@ -887,7 +989,7 @@ tmp<-cohort.data[!is.na(cohort.data$ht_tailPeak),]
 resultTable<-calcAllPvals(yList, xList, 1000, 'weight', tmp)
 
 foo <- boot(tmp, function(data,indices)
-  weightedCorr(tmp$lqt2_penetranceEstimate_EM[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
+  weightedCorr(tmp$p_mean_w[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
 print("EM estimated LQT2 penetrance versus observed cohort LQT2 penetrance")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
@@ -918,9 +1020,10 @@ quantile(foo$t,c(0.025,0.975))
 
 ```
 
-# Variance explained from literature dataset
+## Variance explained from literature dataset
 
 ```{r}
+load("lit_all_data_checkpoint.RData")
 
 tmp<-d[!is.na(d$provean_score) & !is.na(d$penetrance_lqt2) & !is.na(d$lqt2_dist) & !is.na(d$revel_score),]
 
@@ -981,11 +1084,12 @@ quantile(foo$t,c(0.025,0.975))
 
 ```
 
-# ROC and AUC plots
+# Part 4: ROC and AUC plots
 
 ## ROCs of observed cohort LQT2 penetrance with 0.5 as cutoff all variants. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("cohort_checkpoint.RData")
 
 cohort.data$lqt2_patho <- NA
 cohort.data$lqt2_patho[cohort.data$penetrance_lqt2>=0.5] <- 1
@@ -1000,7 +1104,7 @@ modfunc3 <- glm(lqt2_patho~blast_pssm, data = fglm, family = 'binomial')
 modfunc4 <- glm(lqt2_patho~provean_score, data = fglm, family = 'binomial')
 modfunc5 <- glm(lqt2_patho~pamscore, data = fglm, family = 'binomial')
 modfunc6 <- glm(lqt2_patho~lqt2_dist, data = fglm, family = 'binomial')
-modfunc7 <- glm(lqt2_patho~lqt2_penetranceEstimate_EM, data = fglm, family = 'binomial')
+modfunc7 <- glm(lqt2_patho~p_mean_w, data = fglm, family = 'binomial')
 
 funs <- list(modfunc2, modfunc3, modfunc4, modfunc5, modfunc6, modfunc7)
 
@@ -1021,12 +1125,13 @@ for(li in funs){
 AUCs from ROCs predicting EM posteriors 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("cohort_checkpoint.RData")
+
 # Wrapper for convenience of making GLMs and outputting AUCs
 glm.mod=function(fglm,independent){
   in_string <- paste(independent, collapse=" + ")
   regression_formula <- as.formula(paste("lqt2_patho", in_string, sep=" ~ "))
   mod <- glm(regression_formula, data = fglm, family = 'binomial')
-  #print(paste(regression_formula, tmp$auc))
   tmp<-roc(fglm$lqt2_patho[row.names(fglm) %in% as.numeric(names(predict(mod)))], predict(mod), ci=T)
   return(tmp$auc)
 }
@@ -1038,7 +1143,8 @@ cohort.data$lqt2_patho[cohort.data$penetrance_lqt2<0.2] <- 0
 cutoffs <- seq(0.1,0.8,0.05)
 colrs <- c("red", "green", "orange", "blue", "black", "gray")
 
-fglm<-cohort.data[!is.na(cohort.data$blast_pssm),]# & cohort.data$total_carriers == 1, ]
+fglm<-cohort.data[!is.na(cohort.data$blast_pssm) & cohort.data$total_carriers > 0, ]
+fglm<-fglm[!is.na(fglm$var),]
 dist.only <- 0
 blast1 <- 0
 polyphen1 <- 0
@@ -1061,7 +1167,7 @@ for (co in cutoffs){
   revel[i]<-glm.mod(fglm,"revel_score")
   prov1[i]<-glm.mod(fglm,"provean_score")
   dist.only[i]<-glm.mod(fglm,"lqt2_dist")
-  EM[i]<-glm.mod(fglm,"lqt2_penetranceEstimate_EM")
+  EM[i]<-glm.mod(fglm,"p_mean_w")
   }
 }
 
@@ -1077,9 +1183,10 @@ lines(cutoffs[1:i],EM,col=colrs[6]) # gray
 
 ```
 
-## ROCs of observed cohort LQT2 penetrance with 0.5 as cutoff, single observation variants. 
+## ROCs of observed cohort LQT2 penetrance with single observation variants. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("cohort_checkpoint.RData")
 
 cohort.data$lqt2_patho <- NA
 cohort.data$lqt2_patho[cohort.data$penetrance_lqt2>=0.5] <- 1
@@ -1094,7 +1201,7 @@ modfunc3 <- glm(lqt2_patho~blast_pssm, data = fglm, family = 'binomial')
 modfunc4 <- glm(lqt2_patho~provean_score, data = fglm, family = 'binomial')
 modfunc5 <- glm(lqt2_patho~pamscore, data = fglm, family = 'binomial')
 modfunc6 <- glm(lqt2_patho~lqt2_dist, data = fglm, family = 'binomial')
-modfunc7 <- glm(lqt2_patho~lqt2_penetranceEstimate_EM, data = fglm, family = 'binomial')
+modfunc7 <- glm(lqt2_patho~p_mean_w, data = fglm, family = 'binomial')
 
 funs <- list(modfunc2, modfunc3, modfunc4, modfunc5, modfunc6, modfunc7)
 
@@ -1114,6 +1221,7 @@ for(li in funs){
 ## ROCs of observed literature LQT2 penetrance with 0.5 as cutoff. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("lit_all_data_checkpoint.RData")
 
 d$lqt2_patho <- NA
 d$lqt2_patho[d$penetrance_lqt2>=0.5] <- 1
@@ -1147,6 +1255,8 @@ for(li in funs){
 ## AUCs from ROCs observed literature LQT2 penetrance at multiple cutoffs
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("lit_all_data_checkpoint.RData")
+
 # Wrapper for convenience of making GLMs and outputting AUCs
 glm.mod=function(fglm,independent){
   in_string <- paste(independent, collapse=" + ")
@@ -1160,6 +1270,7 @@ glm.mod=function(fglm,independent){
 d$lqt2_patho <- NA
 d$lqt2_patho[d$penetrance_lqt2>=0.5] <- 1
 d$lqt2_patho[d$penetrance_lqt2<0.5] <- 0
+d$p_mean_prior<-d$alpha/(d$alpha+d$beta)
 
 cutoffs <- seq(0.1,0.8,0.05)
 colrs <- c("red", "green", "orange", "blue", "black", "gray")
@@ -1201,87 +1312,194 @@ lines(cutoffs[1:i],dist.only,col=colrs[5]) # black
 lines(cutoffs[1:i],EM,col=colrs[6]) # gray
 ```
 
-# ROC and AUC for N = 1 variants from the literature.
+## ROC and AUC for N = 1 variants from the literature.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("lit_all_data_checkpoint.RData")
+
+d$lqt2_patho <- NA
+d$lqt2_patho[d$penetrance_lqt2>=0.5] <- 1
+d$lqt2_patho[d$penetrance_lqt2<0.5] <- 0
+d$p_mean_prior<-d$alpha/(d$alpha+d$beta)
+fglm<-d[!is.na(d$blast_pssm) & d$total_carriers == 1,]
+colrs <- c("red", "green", "orange", "blue", "black", "gray")
+
+modfunc1 <- glm(lqt2_patho~pph2_prob, data = fglm, family = 'binomial')
+modfunc2 <- glm(lqt2_patho~revel_score, data = fglm, family = 'binomial')
+modfunc3 <- glm(lqt2_patho~blast_pssm, data = fglm, family = 'binomial')
+modfunc4 <- glm(lqt2_patho~provean_score, data = fglm, family = 'binomial')
+modfunc5 <- glm(lqt2_patho~pamscore, data = fglm, family = 'binomial')
+modfunc6 <- glm(lqt2_patho~lqt2_dist, data = fglm, family = 'binomial')
+modfunc7 <- glm(lqt2_patho~p_mean_prior, data = fglm, family = 'binomial')
+
+funs <- list(modfunc2, modfunc3, modfunc4, modfunc5, modfunc6, modfunc7)
+
+i=0
+par(pty="s")
+tmp<-roc(fglm$lqt2_patho[row.names(fglm) %in% as.numeric(names(predict(modfunc1)))], predict(modfunc1), ci=T)
+plot.roc(tmp, col = "magenta")
+for(li in funs){
+  i=i+1
+  tmp<-roc(fglm$lqt2_patho[row.names(fglm) %in% as.numeric(names(predict(li)))], predict(li), ci=T)
+  plot.roc(tmp,add = T, col = colrs[i])
+}
+
+```
+
+## AUC for N = 1 variants from the literature.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+load("lit_all_data_checkpoint.RData")
+
+# Wrapper for convenience of making GLMs and outputting AUCs
+glm.mod=function(fglm,independent){
+  in_string <- paste(independent, collapse=" + ")
+  regression_formula <- as.formula(paste("lqt2_patho", in_string, sep=" ~ "))
+  mod <- glm(regression_formula, data = fglm, family = 'binomial')
+  #print(paste(regression_formula, tmp$auc))
+  tmp<-roc(fglm$lqt2_patho[row.names(fglm) %in% as.numeric(names(predict(mod)))], predict(mod), ci=T)
+  return(tmp$auc)
+}
+
+d$lqt2_patho <- NA
+d$lqt2_patho[d$penetrance_lqt2>=0.5] <- 1
+d$lqt2_patho[d$penetrance_lqt2<0.5] <- 0
+d$p_mean_prior<-d$alpha/(d$alpha+d$beta)
+
+cutoffs <- seq(0.1,0.8,0.05)
+colrs <- c("red", "green", "orange", "blue", "black", "gray")
+fglm<-d[!is.na(d$lqt2_patho) & !is.na(d$blast_pssm) & d$total_carriers == 1,]
+dist.only <- 0
+blast1 <- 0
+polyphen1 <- 0
+prov1 <- 0
+EM <- 0
+revel<-0
+pamscore <- 0
+len.new<-0
+i=0
+for (co in cutoffs){
+  fglm$lqt2_patho[fglm$penetrance_lqt2>=co] <- 1
+  fglm$lqt2_patho[fglm$penetrance_lqt2<co] <- 0
+  print(paste(length(fglm$lqt2_patho), " ", sum(fglm$lqt2_patho)))
+  if (!sum(fglm$lqt2_patho)<6){
+  i=i+1
+
+  pamscore[i]<-glm.mod(fglm,"pamscore")
+  blast1[i]<-glm.mod(fglm,"blast_pssm")
+  polyphen1[i]<-glm.mod(fglm,"pph2_prob")
+  revel[i]<-glm.mod(fglm,"revel_score")
+  prov1[i]<-glm.mod(fglm,"provean_score")
+  dist.only[i]<-glm.mod(fglm,"lqt2_dist")
+  EM[i]<-glm.mod(fglm,"p_mean_prior")
+  }
+}
+
+par(cex=1, bty='l', lwd=2)
+plot(cutoffs[1:i],polyphen1,col="magenta",type = "l",ylim = c(0.5,1))#, 
+
+lines(cutoffs[1:i],revel,col=colrs[1]) # red
+lines(cutoffs[1:i],blast1,col=colrs[2]) # green
+lines(cutoffs[1:i],prov1,col=colrs[3]) # orange
+lines(cutoffs[1:i],pamscore,col=colrs[4]) # blue 
+lines(cutoffs[1:i],dist.only,col=colrs[5]) # black
+lines(cutoffs[1:i],EM,col=colrs[6]) # gray
+```
 
 
-
-## ROC of observed literature LQT2 penetrance with 0.5 as cutoff.
-
-## AUCs from ROCs observed literature LQT2 penetrance at multiple cutoffs
-
-# Combine literature and cohort data
-
-## Part 3 Forest plots (Needs revisions!)
+# Part 4: Forest plots
 
 The code to produce the forest plots is shown in the code chunk.    
 
 ```{r tuning 20 residue number forest plot, eval=F}
 rm(d)
 
-load("CheckPoint_20.RData")
+# Loading combined literature, gnomAD, and cohort dataset 
+load("lit_all_data_checkpoint.RData")
+d<-d[d$total_carriers>0 & d$mut_type!="nonsense" & d$isoform=="A",]
+d<-d[!is.na(d$var),]
 
-new_mean <- (d$alpha_g + d$brs1)/(d$alpha_g+d$beta_g+d$total_carriers)
-alt.mean <- (0.4492651 + d$brs1)/(0.4492651+2.727777+d$total_carriers)
+mean.post <- (d$alpha + d$lqt2)/(d$alpha+d$beta+d$total_carriers)
+mean.prior <- (d$alpha)/(d$alpha+d$beta)
 
-lower <- qbeta(0.025,d$alpha_g,d$beta_g)
-higher <- qbeta(0.975,d$alpha_g,d$beta_g) 
+lower.prior <- qbeta(0.025,d$alpha,d$beta)
+higher.prior <- qbeta(0.975,d$alpha,d$beta) 
 
-forest.data <- data.frame(variant = d$var, em.posterior = new_mean, empirical.posterior=alt.mean,
-                          lower=lower, higher=higher,total.carriers=d$total_carriers, brs1=d$brs1, resnum=d$resnum)
+lower.post <- qbeta(0.025,d$alpha+d$lqt2,d$beta+d$total_carriers-d$lqt2)
+higher.post <- qbeta(0.975,d$alpha+d$lqt2,d$beta+d$total_carriers-d$lqt2) 
 
-forest.data <- forest.data[order(forest.data$resnum,forest.data$total.carriers),]
+forest.data.post <- data.frame(variant = d$var, mean=mean.post,
+                          lower=lower.post, higher=higher.post, resnum=d$resnum, tc=d$total_carriers, lqt2=d$lqt2)
+forest.data.post$group<-"posterior"
 
-head(forest.data)
+forest.data.prior <- data.frame(variant = d$var, mean=mean.prior,
+                          lower=lower.prior, higher=higher.prior, resnum=d$resnum, tc=d$total_carriers, lqt2=d$lqt2)
+forest.data.prior$group<-"prior"
 
-plotf <- function(a,b){
-  png( paste("Plots/Forest Plots/", a, "-",b,"pics.png",sep=""),res=300,height=10,width=10,units="in")
-  forestplot(paste(forest.data[a:b,"variant"], " ", forest.data$brs1[a:b], "/", forest.data$total.carriers[a:b]), 
-           fn.ci_norm = fpDrawNormalCI,
-           boxsize = .25, # We set the box size to better visualize the type
-           line.margin = .1, # We need to add this to avoid crowding
-           mean = cbind(forest.data[a:b,"em.posterior"]),
-           lower = cbind(forest.data[a:b,"lower"]),
-           upper = cbind(forest.data[a:b,"higher"]),
-           xticks=seq(0,1,0.1),
-           col=fpColors(box="blue",line="red"),
-           xlab="Number line")
-  dev.off()
-  
+forest.data<-rbind(forest.data.post, forest.data.prior)
+forest.data<-forest.data[order(forest.data$resnum, forest.data$variant),]
+forest.data$label<-""
+forest.data[forest.data$group=="posterior","label"]<-paste(forest.data[forest.data$group=="posterior","lqt2"], "/", forest.data[forest.data$group=="posterior","tc"])
+
+#define colours for dots and bars
+dotCOLS = c("#866D4B","#000000")
+barCOLS = c("#FFFFFF","#FFFFFF")
+
+plotg <- function(a,b){
+  fd<-forest.data[a:b,]
+  png( paste("Plots/", a, "-",b,"pics.png",sep=""),res=300,height=10,width=10,units="in")
+  p<-ggplot(fd, aes(x=reorder(variant,-resnum), y=mean, ymin=lower, ymax=higher, col=group, fill=group)) + 
+  geom_text(data=fd, aes(x=reorder(variant,-resnum), label=label)) +
+#specify position here
+  geom_linerange(size=2,position=position_dodge(width = 1)) +
+  geom_hline(yintercept=1, lty=1) +
+  geom_hline(yintercept=0, lty=1) +
+#specify position here too
+  geom_point(size=2, shape=21, colour="white", stroke = 0.5,position=position_dodge(width = 1)) +
+  scale_fill_manual(values=barCOLS)+
+  scale_color_manual(values=dotCOLS)+
+  scale_y_continuous(name="LQT2 Diagnosis Probability", limits = c(0, 1)) +
+  coord_flip() +
+  theme_minimal()
+  print(p)
+  dev.off() 
 }
 
-sapply(0:27*50+1,function(x) plotf(x,x+49) )
-plotf(1401,1439)
+sapply(0:30*50+1,function(x) plotg(x,x+49) )
 
 ```
 
-The forests plots are pasted below, where blue boxes are EM posteriors, and red segements are EM priors. Variant name is followed by number of Brs1 cases / total number of heterozygotes.    
+The forests plots are pasted below, where gold bars are posteriors, and black bars are EM priors. Variant name is given to the left and the number of LQT2 affected / total heterozygote count is given between the mean prior and mean posterior.    
 
-![](Plots/Forest Plots/1-50pics.png)
-![](Plots/Forest Plots/51-100pics.png)
-![](Plots/Forest Plots/101-150pics.png)
-![](Plots/Forest Plots/151-200pics.png)
-![](Plots/Forest Plots/201-250pics.png)
-![](Plots/Forest Plots/251-300pics.png)
-![](Plots/Forest Plots/301-350pics.png)
-![](Plots/Forest Plots/351-400pics.png)
-![](Plots/Forest Plots/401-450pics.png)
-![](Plots/Forest Plots/451-500pics.png)
-![](Plots/Forest Plots/501-550pics.png)
-![](Plots/Forest Plots/551-600pics.png)
-![](Plots/Forest Plots/601-650pics.png)
-![](Plots/Forest Plots/651-700pics.png)
-![](Plots/Forest Plots/701-750pics.png)
-![](Plots/Forest Plots/751-800pics.png)
-![](Plots/Forest Plots/801-850pics.png)
-![](Plots/Forest Plots/851-900pics.png)
-![](Plots/Forest Plots/901-950pics.png)
-![](Plots/Forest Plots/951-1000pics.png)
-![](Plots/Forest Plots/1001-1050pics.png)
-![](Plots/Forest Plots/1051-1100pics.png)
-![](Plots/Forest Plots/1101-1150pics.png)
-![](Plots/Forest Plots/1151-1200pics.png)
-![](Plots/Forest Plots/1201-1250pics.png)
-![](Plots/Forest Plots/1251-1300pics.png)
-![](Plots/Forest Plots/1301-1350pics.png)
-![](Plots/Forest Plots/1351-1400pics.png)
-![](Plots/Forest Plots/1401-1439pics.png)
+![](Plots/1-50pics.png)
+![](Plots/51-100pics.png)
+![](Plots/101-150pics.png)
+![](Plots/151-200pics.png)
+![](Plots/201-250pics.png)
+![](Plots/251-300pics.png)
+![](Plots/301-350pics.png)
+![](Plots/351-400pics.png)
+![](Plots/401-450pics.png)
+![](Plots/451-500pics.png)
+![](Plots/501-550pics.png)
+![](Plots/551-600pics.png)
+![](Plots/601-650pics.png)
+![](Plots/651-700pics.png)
+![](Plots/701-750pics.png)
+![](Plots/751-800pics.png)
+![](Plots/801-850pics.png)
+![](Plots/851-900pics.png)
+![](Plots/901-950pics.png)
+![](Plots/951-1000pics.png)
+![](Plots/1001-1050pics.png)
+![](Plots/1051-1100pics.png)
+![](Plots/1101-1150pics.png)
+![](Plots/1151-1200pics.png)
+![](Plots/1201-1250pics.png)
+![](Plots/1251-1300pics.png)
+![](Plots/1301-1350pics.png)
+![](Plots/1351-1400pics.png)
+![](Plots/1401-1450pics.png)
+![](Plots/1451-1500pics.png)
+![](Plots/1501-1550pics.png)
+
