@@ -1,5 +1,5 @@
 ---
-title: "Predict Variant Penetrance Using Structure, Function, and *In Silico* Features (*KCNH2* and LQT2)"
+title: "Predict Variant Diagnosis Probability Using Structure, Function, and *In Silico* Features (*KCNH2* and LQT2)"
 author: "Brett Kroncke"
 date: "October 01, 2020"
 output: 
@@ -62,9 +62,9 @@ h2dist<-read.csv(file = "5va1.dists.txt", header = FALSE)
 ```
 
 # Introduction
-This document describes an estimate of the positive predictive value (PPV) of variant discovery for all variants in the gene *KCNH2* on long QT syndrome type 2 (LQT2). Additional details on the methods used are published Kroncke et al. 2020 PLOS Genetics and at the following website: (https://oates.app.vumc.org/vancart/SCN5A/SCN5A-report.html). We use observed and estimated LQT2 penetrance for all known KCNH2 variants as a way to assess the per variant PPV for variant discovery. Our objective is to develope a prior estimate of the per variant PPV on LQT2 which incorporates structure, function, and *in silico* predictors. We use these *in silico* and *in vitro* data to generate a Bayesian prior estimate of the per variant PPV since these data can be generated in a lab setting, unlike heterozygotes/carriers of *KCNH2* variants which may or may not exist. The final posterior estimate combines this derived prior and clinically phenotyped heterozygotes/carriers.
+This document describes an estimate of the positive predictive value (PPV) of variant discovery for all variants in the gene *KCNH2* on long QT syndrome type 2 (LQT2). Additional details on the methods used are published Kroncke et al. 2020 PLOS Genetics and at the following website: (https://oates.app.vumc.org/vancart/SCN5A/SCN5A-report.html). We use observed and estimated probability of LQT2 diagnosis for all known KCNH2 variants as a way to assess the per variant PPV for variant discovery. Our objective is to develope a prior estimate of the per variant PPV on LQT2 which incorporates structure, function, and *in silico* predictors. We use these *in silico* and *in vitro* data to generate a Bayesian prior estimate of the per variant PPV since these data can be generated in a lab setting, unlike heterozygotes/carriers of *KCNH2* variants which may or may not exist. The final posterior estimate combines this derived prior and clinically phenotyped heterozygotes/carriers.
 
-# Part 1: Calculate LQT2 Penetrance and LQT2 Penetrance Density using Various Subsets of the Literature and Cohort Data
+# Part 1: Calculate probability of LQT2 diagnosis and LQT2 Probability Density using Various Subsets of the Literature and Cohort Data
 
 ## All Literature Variants
 
@@ -93,8 +93,8 @@ d[d$total_carriers < 1,"weight"] <- 0.000 # This is changed to "< 2" when evalua
 
 ```
 
-### LQT2 empirical Penetrance prior
-Use observed LQT2 penetrance to calculate "penetrance density" as described in previous publication. Plot penetrance density versus residue
+### LQT2 empirical LQTS diagnosis probability prior
+Use observed LQT2 diagnosis probability to calculate "LQTS probability density" as described in previous publication. Plot probability density versus residue
 
 ```{r}
 
@@ -142,8 +142,8 @@ lines(xrange, (ps$fit-1.96*ps$se.fit)*1, lty=2, lwd=4)
 
 ```
 
-### Calculate penetrance densities
-With the updated empirical priors applied to carrier counts, calculate "penetrance density" as described in previous publication.
+### Calculate LQTS probability densities
+With the updated empirical priors applied to carrier counts, calculate "LQTS probability density" as described in previous publication.
 
 ```{r}
 # NOTE: adjust 3rd argument given to funcdist, "d,", to d[d$total_carriers>1,] when 
@@ -181,11 +181,11 @@ lines(xrange, (ps$fit-1.96*ps$se.fit)*1, lty=2, lwd=4)
 ```
 
 ### Calculate Weighted Spearman Correlation Coefficients
-Evaluate weighted Spearman correlations coefficients between observed LQT2 penetrance in the literature and various potential predictors 
+Evaluate weighted Spearman correlations coefficients between observed LQT2 diagnosis probability in the literature and various potential predictors 
 
 ```{r}
 # Merge "d" with full variant list and set carrier counts to 0. 
-# This is done for convenience so we can estimate LQT2 penetrance for all variants including 
+# This is done for convenience so we can estimate LQT2 diagnosis probability for all variants including 
 # those witheld during model construction. This will make validation easier.
 d <- merge(d, h2.covariates, all = TRUE)
 d <- unique(d) 
@@ -267,7 +267,7 @@ for (c in covariate_list) {h2.covariates[,c] <- scale(h2.covariates[,c])}
 ```
 
 ### Calculate EM priors and posteriors for all variants
-Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 penetrance) 
+Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 diagnosis probability) 
 
 ```{r, include=FALSE}
 # Assign p_mean_w to empirical penetrance. I need to add the reassignment to ensure
@@ -377,8 +377,8 @@ d[d$total_carriers < 1,"weight"] <- 0.000 # This is changed to "< 2" when evalua
 
 ```
 
-### LQT2 empirical Penetrance prior
-Use observed LQT2 penetrance to calculate "penetrance density" as described in previous publication. Plot penetrance density versus residue
+### LQT2 empirical diagnosis probability prior
+Use observed LQT2 diagnosis probability to calculate "LQTS probability density" as described in previous publication. Plot LQTS probability density versus residue
 
 ```{r}
 # Weighted mean to determine LQT2 penetrance empirical prior
@@ -400,8 +400,8 @@ d$lqt2_penetranceBayesian<-d$lqt2_penetranceBayesian_initial
 
 ```
 
-### Calculate penetrance densities
-With the updated empirical priors applied to carrier counts, calculate "penetrance density" as described in previous publication.
+### Calculate LQTS probability densities
+With the updated empirical priors applied to carrier counts, calculate "LQTS probability density" as described in previous publication.
 
 ```{r}
 
@@ -438,7 +438,7 @@ for (c in covariate_list) {h2.covariates[,c] <- scale(h2.covariates[,c])}
 ```
 
 ### Calculate EM priors and posteriors for all variants
-Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 penetrance) 
+Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 diagnosis probability) 
 
 ```{r, include=FALSE}
 # Assign p_mean_w to empirical penetrance. I need to add the reassignment to ensure
@@ -554,8 +554,8 @@ d[d$total_carriers < 1,"weight"] <- 0.000 # This is changed to "< 2" here to eva
 
 ```
 
-### LQT2 empirical Penetrance prior
-Use observed LQT2 penetrance to calculate "penetrance density" as described in previous publication. Plot penetrance density versus residue
+### LQT2 empirical diagnosis probability prior
+Use observed LQT2 diagnosis probability to calculate "LQTS probability density" as described in previous publication. Plot diagnosis probability density versus residue
 
 ```{r}
 # Mean squared error
@@ -589,8 +589,8 @@ d$lqt2_penetranceBayesian<-d$lqt2_penetranceBayesian_initial
 
 ```
 
-### Calculate penetrance densities and annotate function and structural location
-With the updated empirical priors applied to carrier counts, calculate "penetrance density" as described in previous publication. !!! NOTE: since these data are truly the "best estimates" we include all variants in the calculation such that unique scores are by residue not by variant.
+### Calculate LQTS probability densities and annotate function and structural location
+With the updated empirical priors applied to carrier counts, calculate "LQTS probability density" as described in previous publication. !!! NOTE: since these data are truly the "best estimates" we include all variants in the calculation such that unique scores are by residue not by variant.
 
 ```{r}
 
@@ -632,7 +632,7 @@ d[!is.na(d$ht_tailPeak) & d$ht_tailPeak>=1.25,"Function"]<-"GOF"
 ```
 
 ### Calculate EM priors and posteriors for all variants
-Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 penetrance) 
+Use an EM algorithm to estimate LQT2 PPV for each variant (or LQT2 diagnosis probability) 
 
 ```{r, include=FALSE}
 # Assign p_mean_w to empirical penetrance. The reassignment to ensures
@@ -731,7 +731,7 @@ save(d,file = "lit_plus_cohort_checkpoint.RData")
 
 ```
 
-##  LQT2 penetrance in Cohort Data for validation
+##  LQT2 diagnosis probability in Cohort Data for validation
 
 ```{r}
 load("prepared_data.RData")
@@ -751,7 +751,7 @@ m<- cohort.data %>%
   mutate(p_mean_smooth = rollmean(pmean, k=20, fill = NA))
 
 fit <- loess(cohort.data[,"penetrance_lqt2"]~as.numeric(cohort.data[,"resnum"]), span = 0.15)
-plot(cohort.data$resnum, cohort.data$penetrance_lqt2, xlab ="Residue", ylab = "LQT2 Observed Penetrance", col = "red", pch=19)
+plot(cohort.data$resnum, cohort.data$penetrance_lqt2, xlab ="Residue", ylab = "LQT2 diagnosis probability", col = "red", pch=19)
 xrange <- seq(min(fit$x), max(fit$x), length.out = 100)
 ps <- predict(fit, xrange, se=T)
 lines(xrange, ps$fit*1, lwd=5)
@@ -770,11 +770,11 @@ save(cohort.data, file = "cohort_checkpoint.RData")
 
 # Part 2: Coverage plots
 ## Bootstrap and get the coverage rate 
-(1) Use the observed penetrance from as the TRUE penetrance, generate n binomial observations
+(1) Use the observed diagnosis probability from as the TRUE diagnosis probability, generate n binomial observations
 
 (2) Use the final EM algorithm posterior as the prior for Beta-Binomial, incorporate data from step (1), generate the posterior distribution, and get 95% credible interval.
 
-(3) Check whether the interval cover the true penetrance from Step 1.
+(3) Check whether the interval cover the true diagnosis probability from Step 1.
 
 (4) Repeat Step 1 to Step 3 N times to get the coverage rate.  
 
@@ -788,7 +788,7 @@ BootsCoverage <- function(var,n=100,N=1000,true){
   # n: number of subjects in the new data
   # N: number of Bootstrap
 
-  # extract the "true" penetrance
+  # extract the "true" diagnosis probability
   true.p <- d[d$var==var,true]
   
   # generate binomial data 
@@ -815,9 +815,9 @@ BootsCoverage <- function(var,n=100,N=1000,true){
 ```
 
 ## Plot coverage
-### Observed penetrance as the "true" penetrance
+### Observed diagnosis probability as the "true" diagnosis probability
 
-The coverage plot where observed penetrance is the "true" penetrance and one hundred new observations are added is shown below. 
+The coverage plot where observed diagnosis probability is the "true" diagnosis probability and one hundred new observations are added is shown below. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # load data, literature + gnomAD + cohort
@@ -964,7 +964,7 @@ tmp<-cohort.data[!is.na(cohort.data$provean_score) & !is.na(cohort.data$revel_sc
 # Weighted R2 between observed LQT2 penetrance and post-test probability
 foo <- boot(tmp, function(data,indices)
   weightedCorr(tmp$p_mean_w[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
-print("EM estimated LQT2 penetrance versus observed cohort LQT2 penetrance")
+print("EM estimated LQT2 diagnosis probability versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -972,7 +972,7 @@ model <- lm(penetrance_lqt2~lqt2_dist, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("LQT2 penetrance density versus observed cohort LQT2 penetrance")
+print("LQT2 diagnosis probability density versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -980,7 +980,7 @@ model <- lm(penetrance_lqt2~revel_score, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("REVEL score versus observed cohort LQT2 penetrance")
+print("REVEL score versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -990,7 +990,7 @@ resultTable<-calcAllPvals(yList, xList, 1000, 'weight', tmp)
 
 foo <- boot(tmp, function(data,indices)
   weightedCorr(tmp$p_mean_w[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
-print("EM estimated LQT2 penetrance versus observed cohort LQT2 penetrance")
+print("EM estimated LQT2 diagnosis probability versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -998,7 +998,7 @@ model <- lm(penetrance_lqt2~ht_tailPeak, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("Heterozygously measured peak tail current versus observed cohort LQT2 penetrance")
+print("Heterozygously measured peak tail current versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1006,7 +1006,7 @@ model <- lm(penetrance_lqt2~lqt2_dist, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("LQT2 penetrance density versus observed cohort LQT2 penetrance")
+print("LQT2 probability density versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1014,7 +1014,7 @@ model <- lm(penetrance_lqt2~revel_score, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("REVEL score versus observed cohort LQT2 penetrance")
+print("REVEL score versus observed cohort LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1029,7 +1029,7 @@ tmp<-d[!is.na(d$provean_score) & !is.na(d$penetrance_lqt2) & !is.na(d$lqt2_dist)
 
 foo <- boot(tmp, function(data,indices)
   weightedCorr(tmp$p_mean_w[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
-print("EM estimated LQT2 penetrance versus observed literature LQT2 penetrance")
+print("EM estimated LQT2 diagnosis probability versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1037,7 +1037,7 @@ model <- lm(penetrance_lqt2~lqt2_dist, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("LQT2 penetrance density versus observed literature LQT2 penetrance")
+print("LQT2 probability density versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1045,7 +1045,7 @@ model <- lm(penetrance_lqt2~revel_score, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("REVEL versus observed literature LQT2 penetrance")
+print("REVEL versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1054,7 +1054,7 @@ tmp<-d[!is.na(d$ht_tailPeak) & !is.na(d$provean_score) & !is.na(d$penetrance_lqt
 
 foo <- boot(tmp, function(data,indices)
   weightedCorr(tmp$p_mean_w[indices],tmp$penetrance_lqt2[indices], method="pearson", weights = tmp$weight[indices])^2, R=1000)
-print("EM estimated LQT2 penetrance versus observed literature LQT2 penetrance")
+print("EM estimated LQT2 diagnosis probability versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1062,7 +1062,7 @@ model <- lm(penetrance_lqt2~lqt2_dist, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("LQT2 penetrance density versus observed literature LQT2 penetrance")
+print("LQT2 probability density versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1070,7 +1070,7 @@ model <- lm(penetrance_lqt2~ht_tailPeak, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("Heterozygous peak tail current versus observed literature LQT2 penetrance")
+print("Heterozygous peak tail current versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1078,7 +1078,7 @@ model <- lm(penetrance_lqt2~revel_score, data = tmp, weights = weight)
 mod<-data.frame(model$fitted.values,model$model$penetrance_lqt2,model$weights)
 foo <- boot(mod, function(data,indices)
   weightedCorr(mod$model.fitted.values[indices],mod$model.model.penetrance_lqt2[indices], method="pearson", weights = mod$model.weights[indices])^2, R=1000)
-print("REVEL versus observed literature LQT2 penetrance")
+print("REVEL versus observed literature LQT2 diagnosis probability")
 foo$t0
 quantile(foo$t,c(0.025,0.975))
 
@@ -1086,7 +1086,7 @@ quantile(foo$t,c(0.025,0.975))
 
 # Part 4: ROC and AUC plots
 
-## ROCs of observed cohort LQT2 penetrance with 0.5 as cutoff all variants. 
+## ROCs of observed cohort LQT2 diagnosis probability with 0.5 as cutoff all variants. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 load("cohort_checkpoint.RData")
@@ -1121,7 +1121,7 @@ for(li in funs){
 
 ```
 
-## AUCs from ROCs observed cohort LQT2 penetrance at multiple cutoffs
+## AUCs from ROCs observed cohort LQT2 diagnosis probability at multiple cutoffs
 AUCs from ROCs predicting EM posteriors 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -1183,7 +1183,7 @@ lines(cutoffs[1:i],EM,col=colrs[6]) # gray
 
 ```
 
-## ROCs of observed cohort LQT2 penetrance with single observation variants. 
+## ROCs of observed cohort LQT2 diagnosis probability with single observation variants. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 load("cohort_checkpoint.RData")
@@ -1218,7 +1218,7 @@ for(li in funs){
 
 ```
 
-## ROCs of observed literature LQT2 penetrance with 0.5 as cutoff. 
+## ROCs of observed literature LQT2 diagnosis probability with 0.5 as cutoff. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 load("lit_all_data_checkpoint.RData")
@@ -1252,7 +1252,7 @@ for(li in funs){
 
 ```
 
-## AUCs from ROCs observed literature LQT2 penetrance at multiple cutoffs
+## AUCs from ROCs observed literature LQT2 diagnosis probability at multiple cutoffs
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 load("lit_all_data_checkpoint.RData")
