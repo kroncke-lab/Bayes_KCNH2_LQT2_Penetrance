@@ -1407,7 +1407,7 @@ lines(cutoffs[1:i],EM,col=colrs[6]) # gray
 ```
 
 
-# Part 4: Forest plots
+# Part 5: Forest plots
 
 The code to produce the forest plots is shown in the code chunk.    
 
